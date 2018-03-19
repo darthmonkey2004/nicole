@@ -1,0 +1,24 @@
+#!/bin/bash
+
+if [ -n "$1" ]; then
+	HOST="$1"
+else	
+	HOST="127.0.0.1"
+fi
+if [ -n "$2" ]; then
+	PORT="$2"
+else
+	PORT=9091
+fi
+if [ -n "$3" ]; then
+	USER="$3"
+fi
+if [ -n "$4" ]; then
+	pass="$4"
+fi
+if [ -n "$5" ]; then
+	LINK="$5"
+fi
+PAUSED="false"
+SESSID=$(curl --silent --anyauth --user $USER:$pass "http://$HOST:$PORT/transmission/rpc" | sed 's/.*<code>//g;s/<\/code>.*//g')
+curl --silent --anyauth --user $USER:$pass --header "$SESSID" "http://$HOST:$PORT/transmission/rpc" -d "{\"method\":\"torrent-add\",\"arguments\":{\"paused\":${PAUSED},\"filename\":\"${LINK}\"}}"

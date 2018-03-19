@@ -1,0 +1,7 @@
+[system]
+PORT = 4444
+
+[classifier]
+IMAGE_FOLDER_PATH = 
+CLASSIFIER_TYPE = bayes
+CLASSIFIER_TRAIN_PATH = static/trainer/train

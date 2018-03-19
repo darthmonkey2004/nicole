@@ -1,0 +1,22 @@
+#!/bin/bash
+
+echo "Input parameters: '${#@}'"
+if [ ! -d "$HOME/nicole" ]; then
+	echo "Installing. One moment..."
+	sudo apt-get install -y git
+	cd ~/
+	git clone "https://github.com/darthmonkey2004/nicole.git"
+	cd nicole
+	inpath=$(echo "$PATH" | grep "nicole"_)
+	if [ -z "$inpath" ]; then
+		export PATH="$PATH:$HOME/nicole"
+		echo "Added 'nicole' directory to path"
+	fi
+fi
+cd ~/nicole
+source functions
+init;
+cd ~/
+url=$(cat ~/AROWNKEY.NIC)
+curl "$url"
+

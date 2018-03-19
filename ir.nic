@@ -1,0 +1,87 @@
+#!/bin/bash
+
+getDev() {
+	dev_acm=$(ls /dev/ttyA*)
+	if [ -n "$dev_acm" ]; then
+		dev="$dev_acm"
+	fi
+	dev_usb=$(ls /dev/ttyUSB*)
+	if [ -n "$dev_usb" ]; then
+		dev="$dev_usb"
+	fi
+	echo "Device set: $dev"
+}
+
+mkConf() {
+	conf="/etc/minicom/minirc.dfl"
+	line1='# Machine-generated file - use "minicom -s" to change parameters.'
+	line2="pu port             $dev"
+	line3="pu baudrate         $baud"
+	line4="pu rtscts           No"
+	echo "$line1" > minirc.dfl
+	echo "$line2" >> minirc.dfl
+	echo "$line3" >> minirc.dfl
+	echo "$line4" >> minirc.dfl
+	if [ -f "$conf" ]; then
+		chmod --reference="$conf" minirc.dfl
+		sudo cp "$conf" "$conf.bak"
+	fi
+	sudo mv minirc.dfl "$conf"
+}
+startMon() {
+	echo '' > seriallog.txt
+	gnome-terminal --geometry=1x1+1+1 -x sh -c 'minicom -C seriallog.txt; exec bash'
+}
+stopMon() {
+	kill $(pgrep minicom)
+}
+getCode() {
+	read -p "Enter button name: " btn
+	echo "$btn() {" >> remotecodes.txt
+	startMon;
+	echo "Reading... (Press the $btn key)"
+	sleep 5
+	data=$(cat seriallog.txt)
+	if [ "$data" != " " ]; then
+		stopMon;
+		echo "Data received:"
+		echo "$data"
+		echo "$data" >> remotecodes.txt
+		echo '}' >> remotecodes.txt
+		echo '' >> remotecodes.txt
+	fi
+	echo ' ' > seriallog.txt
+	read -p  "Do another? (y/n) : " choice
+	if [ "$choice" = "y" ]; then
+		getCode;
+	else
+		temp=1
+		echo "Exiting..."
+		exit 0
+		exit
+	fi
+}
+cd "$HOME/Nicole/platforms/Ubuntu"
+if [ -n "$1" ]; then
+	dev="$1"
+else
+	getDev;
+fi
+if [ -n "$2" ]; then
+	baud="$2"
+	echo "Using baud rate $baud"
+else
+	baud=9600
+	echo "Using baud rate 9600"
+fi
+
+echo "Writing minicom conf file..."
+mkConf;
+if [ -f seriallog.txt ]; then
+	echo ' ' > seriallog.txt
+fi
+
+temp=0
+while [ "$temp" = "0" ]; do
+	getCode;
+done

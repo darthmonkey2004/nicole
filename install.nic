@@ -1,0 +1,241 @@
+#!/bin/bash
+
+setupUser() {
+	if [ -z "$user" ]; then
+		read -p "Enter user name: " user
+	fi
+	sudo adduser "$user"
+	sudo passwd "$user"
+	usermod -aG sudo monkey
+	echo "User created!"
+}
+install_zoneminder() {
+	sudo rm /etc/mysql/my.cnf
+	sudo cp /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/my.cnf
+	echo "Add 'sql_mode = NO_ENGINE_SUBSTITUTION' to [mysqld] section.."
+	read -p "Type 'y' to continue...: " cont
+	if [ "$cont" = "y" ]; then
+		sudo nano /etc/mysql/my.cnf
+	else
+		echo "Mysql addition skipped. You will need to add it later. Continuing..."
+	fi
+	sudo systemctl restart mysql
+	sudo mysql secure installation
+	sudo apt-get install zoneminder
+	sudo adduser www-data video
+	sudo a2enmod cgi
+	sudo a2enconf zoneminder
+	sudo a2enmod rewrite
+	sudo chown -R www-data:www-data /usr/share/zoneminder/
+	sudo systemctl enable zoneminder
+	sudo service zoneminder start
+	echo "In '[Date]', uncomment 'date.timezone =' and add 'America/Chicago'."
+	read -p "Type 'y' to continue...: " cont
+	if [ "$cont" = "y" ]; then
+		sudo nano /etc/php/7.0/apache2/php.ini
+	else
+		echo "date.timezone not changed, this will need to be done manually later. Continuing.."
+	fi
+	sudo service apache2 reload
+	echo "Now change in browser (http://localhost/zm): Options, Paths, PATHS_ZMS from '/cgi-bin/nph-zms' to '/zm/cgi-bin/nph-zms'."
+	echo "Finished!"
+}
+config_noPass() {
+	echo "Attention: You are about to modify the sudoers file to remove the constant password for sudo prompting!"
+	echo "Add 'user ALL=(ALL) NOPASSWD:ALL' at the end of the next menu, one line for every user to bypass sudo password."
+	read -p "Type 'y' to continue...: " conf
+	if [ "$conf" = 'y' ]; then
+		sudo visudo
+		echo "Sudo password bypassed!"
+	else
+		echo "Sudo password prompting removal aborted! Continuing..."
+	fi
+}
+updateAliases() {
+	echo "Updating bash aliases..."
+	cd ~/
+	wget "http://simiantechservices.com/bash_aliases"
+	sudo mv bash_aliases .bash_aliases
+	sudo chmod a+x .bash_aliases
+	echo "Updated!"		
+}
+install_software() {
+	sudo add-apt-repository ppa:danielrichter2007/grub-customizer
+	sudo add-apt-repository ppa:iconnor/zoneminder
+	sudo apt-add-repository ppa:mamarley/tvheadend-git-stable
+	sudo apt-get update
+	sudo apt-get -y upgrade
+	sudo apt-get -y dist-upgrade
+	if [ ! -f "$HOME/Nicole/platforms/Ubuntu/software.nic" ]; then
+		software="grub-customizer vlc v4l-utils mplayer python-pip python-aiml sqlite3 xdotool git dvb-apps libiconv-hook-dev openssl libssl-dev libchromaprint-tools qv4l2 arduino id3 tasksel mysqltuner postfix mailutils tvheadend openssh-server samba jq picard xdotool jq transmission-daemon adb ipython python-opencv python-scipy python-numpy python-setuptools"
+	else
+		software=$(cat "$HOME/Nicole/platforms/Ubuntu/software.nic")
+	fi
+	sudo apt-get install -y "$software"
+	echo "Installing youtube downloader..."
+	pip install youtube-dl
+	echo "Installing vision library..."
+	sudo pip install svgwrite
+	sudo pip install https://github.com/sightmachine/SimpleCV/zipball/master
+	echo "Installation finished!"
+}
+install_tuner() {
+	wget -nv https://download.opensuse.org/repositories/home:entropytuner/xUbuntu_17.10/Release.key -O Release.key
+	sudo apt-key add - < Release.key
+	sudo apt-get update
+}
+install_postfix() {
+	read -p "Enter domain name to use: " domain
+	sudo postconf -e "myhostname = $domain"
+	sudo postconf -e "virtual_alias_maps = hash:/etc/postfix/virtual"
+	localip=$(ifconfig | grep -v inet6 | grep -v 127.0.0.1 | grep inet | cut -d  ' ' -f 10) ; len=${#localip} ; last=$(echo "$localip" | cut -d '.' -f 4) ; last=".$last" ; slen=${#last} ; last=$(( $len - $slen )) ; subnet=${localip:0:$last}
+	sudo postconf -e "mynetworks = 127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128 $subnet/255"
+	read -p "Enter an email to add as an alias: " email
+	if [ ! -d ".postfix" ]; then
+		mkdir ".postfix"
+	fi
+	echo "$email $USER" >> .postfix/virtual
+	sudo postmap .postfix/virtual
+	sudo service postfix restart
+	echo "Postfix installed!"
+}
+install_ssh() {
+	sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.factory-defaults
+	sudo chmod a-w /etc/ssh/sshd_config.factory-defaults
+	echo "Change port number from '22' to '2222'..."
+	sudo nano /etc/ssh/sshd_config
+	sudo systemctl restart ssh
+	mkdir ~/.ssh
+	chmod 700 ~/.ssh
+	ssh-keygen -t rsa
+}
+createMediaDB() {
+	cd ~/
+	if [ ! -f "nplayer.mediadb.sqlite.txt" ]; then
+		wget "http://simiantechservices.com/nplayer.mediadb.sqlite.txt"
+	fi
+	if [ -f "media.db" ]; then
+		echo "Database already created! Are you sure you want to erase it?"
+		read -p "y=DELETE ALL DATA, n=WTF? ARE YOU CRAZY? HELL NO! : " yesno
+		if [ "$yesno" = "y" ]; then
+			echo "Deleting media database..."
+			rm media.db
+			if [ ! -f "media.db" ]; then
+				echo "Deleted."
+			else
+				echo "Failed to delete file! (Write permission issue?)"
+				return 1
+			fi
+		else
+			echo "Skipping database creation..."
+			return 0
+		fi
+	fi
+	sqlite3 media.db ".read 'nplayer.mediadb.sqlite.txt'"
+	echo "Database Created"
+}
+setupSambaShare() {
+	sudo smbpasswd -a "$USER"
+	read -p "Share a directory now? : " yeso
+	if [ "$yesno" = 'y' ]; then
+		read -p "Enter the directory path to share: " path
+		dirname=$(basename "$path")
+		echo "Using $path."
+			echo "Backing up smbd.conf..."
+		sudo cp /etc/samba/smb.conf /etc/samba/smb.conf.bak
+		sudo cp /etc/samba/smb.conf ~
+		sudo chmod a+rwx smb.conf
+		echo "Done."
+		if [ ! -d "$path" ]; then
+			echo "Creating $path..."
+			mkdir "$path"
+			echo "Done."
+		fi
+		read -p "Enter description : (blank for none) : " description
+		if [ -z "$description" ]; then
+			description="None"
+		fi
+		net usershare add "$dirname" "$path" "$description" everyone:F guest_ok=y
+		echo "Share '$dirname' created and shared at '$path'!!"
+	else
+		echo "Samba user set!"
+	fi
+	echo "Restarting service..."
+	sudo service smbd restart
+	echo "Done!"
+}
+setupNicChat() {
+	echo "Sorry, this feature is still on my 'todo' list."
+}
+
+if [ "$1" = "--all" ] || [ "$1" = "-a" ]; then
+	yesall="y"
+fi
+if [ "$1" = "--com" ] || [ "$1" = "-c" ]; then
+	com="$2"
+	$com;
+	exit
+fi
+echo "Starting setup..."
+install_software;
+if [ -z "$yesall" ]; then
+	read -p "Create new user for Kali/Ubuntu? (y/n): " yesno
+	if [ "$yesno" = "y" ]; then
+		setupUser;
+	fi
+	read -p "Update bash aliases? (Custom commands)? (y/n): " yesno
+	if [ "$yesno" = "y" ]; then
+		updateAliases;
+	fi
+	read -p "Install zoneminder? (y/n): " yesno
+	if [ "$yesno" = "y" ]; then
+		install_zoneminder;
+	fi
+	read -p "Bypass password on sudo usage? (y/n): " yesno
+	if [ "$yesno" = "y" ]; then
+		config_noPass;
+	fi
+	read -p "Install PostFix (mail server)? (y/n): " yesno
+	if [ "$yesno" = "y" ]; then
+		install_postfix;
+	fi
+	read -p "Install OpenSSH Server (Remote shell)? (y/n): " yesno
+	if [ "$yesno" = "y" ]; then
+		install_ssh;
+	fi
+	read -p "Configure Nplayer media database (sqlite3 media.db)? (y/n): " yesno
+	if [ "$yesno" = "y" ]; then
+		createMediaDB;
+	fi
+	read -p "Configure new Samba Share (default/new smb:// network share path)? (y/n): " yesno
+	if [ "$yesno" = "y" ]; then
+	setupSambaShare;
+	fi
+	read -p "Setup NicChat (Installs AIML engine and gets Nicole's database)? (y/n): " yesno
+	if [ "$yesno" = "y" ]; then
+		setupNicChat;
+	fi
+elif [ -n "$yesall" ]; then
+	echo "Installing/confguring complete Ubuntu dev environment. Please wait..."
+	setupUser;
+	updateAliases;
+	install_zoneminder;
+	config_noPass;
+	install_postfix;
+	install_ssh;
+	createMediaDB;
+	setupSambaShare;
+	pathvar=$(cat .bashrc | grep "Nicole/platforms/Ubuntu")
+	if [ -z "$pathvar" ]; then
+		echo "Appending Nicole's script directory to bash profile..."
+		echo "export PATH='$PATH:$HOME/Nicole/platforms/Ubuntu'" >> .bashrc
+		echo "Done!"
+	else
+		echo "Bash profile already contains path string. Skipping..."
+	fi
+else
+	echo "I didn't understand. Try again..."
+	exit 1
+fi
+echo "NicOS setup complete!"
+exit 0

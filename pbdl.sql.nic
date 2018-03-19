@@ -1,0 +1,33 @@
+#!/bin/bash
+
+if [ -n "$1" ] && [ "$1" != "-c" ]; then
+	mediatype="$1"
+elif [ "$1" = "-c" ]; then
+	echo "Clearing media.db of download items..."
+	cd ~/
+	sqlite3 media.db ".schema pbdl" > pbdl.schema.sql
+	sqlite3 media.db "drop table pbdl;"
+	sqlite3 media.db ".read pbdl.schema.sql"
+	echo "Data cleared!"
+	exit 0
+else
+	read -p "What type of media is this? (software,series,movie,music) : " mediatype
+fi
+data=$(transmission-remote -l)
+IFS=$'\n' ary=($data)
+count="${#ary[@]}"
+last=$(( count - 1 ))
+end=$(echo "${ary[$last]}")
+ary=("${ary[@]/$end}")
+first="${ary[0]}"
+ary=("${ary[@]/$first}")
+for i in "${ary[@]}"; do
+	i=$(echo "$i" | cut -d $'\n' -f 1)
+	i=$(echo ${i//  /|})
+	tid=$(echo "$i" | cut -d '|' -f 2 | cut -d ' ' -f 2)
+	if [ -n "$tid" ]; then
+		echo "Torrent ID: '$tid'"
+	fi
+	./pbdl.sql.addData.nic "$tid" "$mediatype"
+done
+

@@ -1,0 +1,411 @@
+communicate() {
+	echo '' > serialdata
+	echo "$com" > "$dev"
+	sleep 1
+	data=$(cat serialdata | grep "DEBUG:root:")
+	echo "${data//DEBUG:root:/}"
+}
+setDevice() {
+	usb=$(ls /dev/ttyUSB*)
+	if [ -n "$usb" ]; then
+		dev="$usb"
+	fi
+	acm=$(ls /dev/ttyACM*)
+	if [ -n "$acm" ]; then
+		dev="$acm"
+	fi
+	echo "Device set: $dev"
+}
+startSerialRead() {
+	python serial.read.py "$dev" "$baud"&
+	echo "Reading serial data from $dev to ~/serialdata..."
+}
+exportSerialDev() {
+	sudo chmod a+rwx "$dev"
+	echo "Exported $dev for writing!"
+}
+startMotion() {
+	pid=$(pgrep motion)
+	echo "Motion pid: $pid"
+	if [ -z "$pid" ]; then
+		sudo motion -c /etc/motion/motion.conf
+		echo "Motion running!"
+	else
+		echo "Motion was already running!"
+	fi
+}
+getLocalIp() {
+	ifconfig | grep "inet" > netdevs.temp
+	readarray ary < netdevs.temp
+	rm netdevs.temp
+	string="${ary[0]}"
+	string=$(echo "$string" | cut -d $'\n' -f 1)
+	localip=$(echo "$string" | cut -d $'\n' -f 1 | sed -e 's/^[[:space:]]*//' | cut -d ':' -f 2 | cut -d ' ' -f 1)
+	echo "Set local ip: $localip"
+}
+sendState() {
+	if [ -z "$localip" ]; then
+		getLocalIp;
+	fi
+	if [ -f controller.conf ]; then
+		source controller.conf
+		msg="rover.state=Online,ip=$localip"
+		curl "https://autoremotejoaomgcd.appspot.com/sendmessage?key=$ROVER_CTL_ARKEY&message=$msg"
+		echo "Sent state to controller ($ROVER_CTL_NAME)!"
+	else
+		echo "No controller device has been added, unable to send state! Please add a controller from the NicRover Android app."
+	fi
+}
+mkAliases() {
+	if [ -f .bash_aliases ]; then
+		mv .bash_aliases bash_aliases.old
+	fi
+	echo 'alias install="sudo -H apt-get install --fix-missing --yes"' > bash_aliases
+	echo 'alias update="sudo apt-get update"' >> bash_aliases
+	echo 'alias upgrade="sudo apt-get upgrade -y ; sudo apt-get dist-upgrade -y"' >> bash_aliases
+	echo 'alias pyinstall="sudo -H pip install"' >> bash_aliases
+	echo 'alias pyupdate="sudo -H pip install --upgrade"' >> bash_aliases
+	echo 'alias pyupgrade="sudo pip install --upgrade pip"' >> bash_aliases
+	echo 'alias autoremove="sudo apt-get autoremove --yes ; sudo apt-get autoclean -y ; sudo apt-get clean -y"' >> bash_aliases
+	echo 'alias purge="sudo apt-get purge $1 ; sudo apt-get autoremove -y ; sudo apt-get autoclean -y ; sudo apt-get clean -y"' >> bash_aliases
+	echo 'alias restart="sudo shutdown -r 0"' >> bash_aliases
+	echo 'alias sudo="sudo -H"' >> bash_aliases
+	echo 'alias setupvino="gsettings set org.gnome.Vino require-encryption false"' >> bash_aliases
+	echo 'alias aliases="cat ~/.bash_aliases"' >> bash_aliases
+	echo 'alias initvideo="for i in ${ary[@]}; do v4lctl -c $i setnorm ntsc; done"' >> bash_aliases
+	echo 'alias install_pbdl="sudo add-apt-repository --yes ppa:transmissionbt/ppa ; sudo apt-get update ; sudo apt-get install --yes transmission-cli transmission-common transmission-daemon"' >> bash_aliases
+	echo 'alias pbdlsettings="sudo gedit /var/lib/transmission-daemon/info/settings.json"' >> bash_aliases
+	echo 'alias pbdlrestart="sudo service transmission-daemon stop ; sudo service transmission-daemon start"' >> bash_aliases
+	echo 'alias pbdlstop="sudo service transmission-daemon stop"' >> bash_aliases
+	echo 'alias pbdlstart="sudo service transmission-daemon start"' >> bash_aliases
+	echo 'alias pbdlreload="sudo service transmission-daemon reload"' >> bash_aliases
+	echo 'alias pbdllist='transmission-remote -n 'transmission:transmission' -l'' >> bash_aliases
+	echo 'alias pbdladduser="read -p 'Enter user name : ' user ; sudo usermod -a -G debian-transmission $user"' >> bash_aliases
+	echo 'alias pbdlstats='transmission-remote -n 'transmission:transmission' -st'' >> bash_aliases
+	echo 'alias pbdlfullstats='transmission-remote -n 'transmission:transmission' -si'' >> bash_aliases
+	echo 'alias displayinfo="xset -display $DISPLAY -q"' >> bash_aliases
+	echo 'echo "Initialization complete."' >> bash_aliases
+	mv bash_aliases .bash_aliases
+	source .bash_aliases
+}
+init() {
+	cd ~/nicole
+	if [ -z "$dev" ]; then
+		setDevice;
+	fi
+	if [ -z "$baud" ]; then
+		baud=115200
+	fi
+	echo "Baud set: $baud"
+	pypid=$(pgrep python)
+	if [ -z "$pypid" ]; then
+		startSerialRead;
+	fi
+	perm=$(stat -c %A "$dev")
+	if [ "$perm" != "crwxrwxrwx" ]; then
+		exportSerialDev;
+	fi
+	motionrunning=$(pgrep motion)
+	if [ -z "$motion" ]; then
+		startMotion;
+	fi
+	export STATE=1
+	sendState;
+	echo "System ready!"
+}
+exitSystem() {
+	pyrunning=$(pgrep python)
+	if [ -n "$pyrunning" ]; then
+		sudo kill $(pgrep python)
+	fi
+	motionrunning=$(pgrep motion)
+	if [ -n "$motionrunning" ]; then
+		sudo kill $(pgrep motion)
+	fi
+	export STATE=0
+	sendState
+	echo "System exited."
+}
+testFunction() {
+	echo "Test function executed! This means all is being imported.. like a boss."
+}
+scanNetowrk() {
+	if [ -f scanlog.txt ]; then
+		rm scanlog.txt
+	fi
+	data=$(nmap -sP 192.168.2.0/24 | grep "192.168.2")
+	echo "${data//Nmap scan report for /}" > temp
+	readarray ary < temp
+	rm temp
+	if [ -f iplist.txt ]; then
+		rm iplist.txt
+	fi
+	for i in "${ary[@]}"; do
+		string=$(echo "$i" | cut -d $'\n' -f 1)
+		haspar=$(echo "$string" | grep "(")
+		if [ -n "$haspar" ]; then
+			ip=$(echo "$string" | cut -d '(' -f 2 | cut -d ')' -f 1)
+		else
+			ip="$string"
+		fi
+		echo "$ip" >> iplist.txt
+	done
+	readarray ary < iplist.txt
+	count=${#ary[@]}
+	echo "Found $count online devices."
+	for i in ${ary[@]}; do
+		echo "Probing IP $i..."
+		result=$(sudo nmap -PN -sS "$i" | grep "open")
+		echo "$result" > scanlog.txt
+	done
+	cat devices.online.txt
+}
+roverTestConnected() {
+	if [ -f iplist.txt ]; then
+		rm iplist.txt
+	fi
+	data=$(nmap -sP 192.168.2.0/24 | grep "192.168.2")
+	echo "${data//Nmap scan report for /}" > temp
+	readarray ary < temp
+	rm temp
+	for i in "${ary[@]}"; do
+		string=$(echo "$i" | cut -d $'\n' -f 1)
+		haspar=$(echo "$string" | grep "(")
+		if [ -n "$haspar" ]; then
+			ip=$(echo "$string" | cut -d '(' -f 2 | cut -d ')' -f 1)
+		else
+			ip="$string"
+		fi
+		echo "$ip" >> iplist.txt
+	done
+	readarray ary < iplist.txt
+	for i in ${ary[@]}; do
+		ssh=0
+		web=0
+		motion=0
+		ssh1=''
+		ssh2=''
+		http1=''
+		http2=''
+		motionc=''
+		motionv=''
+		echo "Probing network device: $i"
+		i=$(echo "$i" | cut -d $'\n' -f 1)
+		data=$(nmap -p 22,80,8080,9876,8765,4444 "$i")
+		ssh1=$(echo "$data" | grep "22" | grep "open")
+		ssh2=$(echo "$data" | grep "2222" | grep "open")
+		http1=$(echo "$data" | grep "80" | grep "open")
+		http2=$(echo "$data" | grep "8080" | grep "open")
+		motionc=$(echo "$data" | grep "8765" | grep "open")
+		motionv1=$(echo "$data" | grep "9876" | grep "open")
+		motionv2=$(echo "$data" | grep "9877" | grep "open")
+		motionv3=$(echo "$data" | grep "9878" | grep "open")
+		if [ -z "$ssh1" ] && [ -z "$ssh2" ]; then
+			ssh=0
+		else
+			ssh=1
+		fi
+		if [ -z "$http1" ] && [ -z "$http2" ]; then
+			web=0
+		else
+			web=1
+		fi
+		if [ -z "$motionc" ] && [ -z "$motionv1" ] && [ -z "$motionv2" ] && [ -z "$motionv3" ]; then
+			motion=1
+		else
+			motion=0
+		fi
+		if [ "$ssh" = "1" ] && [ "$web" = "1" ]; then
+			if [ "$motion" = "1" ]; then
+				echo "Rover found! $i"
+			else
+				echo "Device at $i possibly the rover, but video streaming server is down. Ensure motion is functional and try again."
+			fi
+		fi
+	done
+}
+dvbscan() {
+	echo "Starting scan 1..."
+	w_scan -fa -A3 -c US M >> channels.conf
+	echo "Done. Starting 2..."
+	w_scan -fa -A3 -c US M -x >cc-Tttt
+	echo "Done. Starting the last one.."
+	w_scan -fa -A3 -c US M -X >zap_cc-Tttt
+	echo "Done!"
+}
+mkCtlConf() {
+	echo "export ROVER_CTL_NAME=CONTROL" > ctl.conf
+	echo "export ROVER_MOBILE_IP=192.168.2.14" >> ctl.conf
+	echo "export ROVER_CTL_CAM_CTLPORT=8765" >> ctl.conf
+	echo "export ROVER_CTL_CAM_STREAMPORT=9876" >> ctl.conf
+	echo "export ROVER_CTL_TYPE=Android" >> ctl.conf
+	echo "if [ -f "$HOME/AROWNKEY.NIC" ]; then
+		cat "$HOME/AROWNKEY.NIC" >> ctl.conf 
+		echo "$key" >> ctl.conf
+	else
+		key="APA91bHBp_Rp_5TE6tvkDFIJHdXR5cj2M0QOw3KM4KodgwEtaMPwrWq5eyT7A93XxJ9PQQCPi08kRyfjFGmzdjT9GM4IKOqdQq-lmJtOFZYjtEtAJiCotyODTn_y5xsLsvMiEFw7B4Tr"
+	fi
+	echo "export ROVER_CTL_ARKEY='$key'" >> ctl.conf
+	echo "Created ctl.conf...      th
+}
+ttymonitor() {
+	inotifywait -q -m -e modify seriallog.txt | while read -r filename event; do
+		sleep 2
+		data="$(cat seriallog.txt)"
+		if [ -n "$data" ]; then
+			echo "Data received:"
+			cat seriallog.txt
+			echo "$data" > temp
+			echo '' > seriallog.txt
+		fi
+	done
+}
+
+getLocalDisplays() {
+	xrandr --listactivemonitors | cut -d '+' -f 2 | cut -d ' ' -f 1 > monitors.temp
+	readarray ary < monitors.temp
+	rm monitors.temp
+	for i in "${ary[@]}"; do 
+		i=$(echo "$i" | cut -d $'\n' -f 1)
+		hasstar=$(echo "$i" | grep "*")
+		if [ -n "$hasstar" ]; then
+			i=$(echo "$i" | cut -d '*' -f 2)
+		fi
+		disp=$(xrandr | grep "$i connected" | cut -d ' ' -f 3)
+		if [ "$disp" = "primary" ]; then
+			disp=$(xrandr | grep "$i connected" | cut -d ' ' -f 4)
+		fi
+		if [ -n "$disp" ]; then
+			echo "$disp"
+		fi
+	done
+}
+roverDisconnect() {
+	exitSystem;
+	export ROVER_CTL_ARKEY=$(cat "$HOME/AROWNKEY.NIC")
+	if [ -z "$ROVER_CTL_ARKEY" ]; then
+		export ROVER_CTL_ARKEY="APA91bFo9m5V9sDcJBW0UwZuW-V_QxdwqoVm1uPXNz1L9H5BgqBNqdw5p-wYVtCRjscRKt5WxX5ObhGHavqUrjAyZ-8brSV54xodhIumkxE31_yC0krp9OgBvHtaV-JkkUqIqsnTYCMY"
+	fi
+	msg="rover.state=Offline,ip=$localip"
+	curl "https://autoremotejoaomgcd.appspot.com/sendmessage?key=$ROVER_CTL_ARKEY&message=$msg"
+	echo ""
+}
+runNc() {
+	if [ -z "$ncport" ]; then
+		ncport=4444
+	fi
+	data=$(nc -l "$ncport")
+	echo "$data"
+}
+runListener() {
+	if [ -n "$arg1" ]; then
+		continuous="$arg1"
+	else
+		read -p "Run continuously? (y/n): " continuous
+	fi
+	if [ "$continuous" = "y" ] || [ -z "$continuous" ]; then
+		runNc;
+		exit
+	else
+		runNc;
+		if [ "$continuous" = "y" ] || [-z "$continuous" ]; then
+			runNc;
+		else
+			exit 0;
+		fi
+	fi
+}
+nv_setup() {
+	echo "Checking for git..."
+	if ! which git; then
+		echo "Installing git.."
+		sudo apt-get install -y git
+	fi
+	cd ~/
+	if [ ! -d nicole ]; then
+		echo "Cloning 'nicole' repostiroy..."
+		git clone https://github.com/darthmonkey2004/nicole.git
+	fi
+	cd nicole
+	if [ ! -d classifier ]; then
+		echo "Cloning classifier from github..."
+		git clone https://github.com/darthmonkey2004/SnackClassifier.git
+		echo "Done."
+	fi
+	mv SnackClassifier classifier
+	cd classifier
+	echo "Checking for pip.."
+	if ! which pip; then
+		echo "Installing pip..."
+		sudo apt-get install -y pip
+	fi
+	if ! which http; then
+		sudo apt-get install -y httpie
+	fi
+	echo "Installing requirements..."
+	pip install -r requirements.txt
+	cd configuration
+	mv environment.ini environment.bak.ini
+	echo "[system]" > environment.ini
+	read -p "Enter port to use for web api: (leave blank for default of 4444)" port
+	if [ -z "$port" ]; then
+		port=4444
+	fi
+	echo "PORT = $port" >> environment.ini
+	echo "" >> environment.ini
+	echo "[classifier]" >> environment.ini
+	echo "IMAGE_FOLDER_PATH = '$HOME/nicole/classifier/static/images'" >> environment.ini
+	echo "CLASSIFIER_TYPE = bayes" >> environment.ini
+	echo "CLASSIFIER_TRAIN_PATH = '$HOME/nicole/classifier/static/images/toTrain'" >> environment.ini
+	echo "Finished!"
+}
+nv_start() {
+	cd "$HOME/nicole/classifier"
+	python manage.py runserver
+}
+nv_listClassifiers() {
+	http GET http://$host:$port/api/classify/names
+}
+nv_trainImg() {
+	"http POST \"http://$host:$port/api/train\" \
+	  images:='[{\"class\": \"test\", \"image\": \"$img_url\"}]'"
+}
+nv_trainList() {
+	if [ -z "$imglist" ]; then
+		read -p "Enter path to image list: " imglist
+	fi
+	if [ ! -f "$imglist" ]; then
+		echo "List not found! Exiting.."
+		exit 1
+	else
+		echo "List found. Importing..."
+	fi
+	echo "{" > temp
+	echo '	"images": [' >> temp
+	echo "		{" >> temp
+	readarray ary < "$imglist"
+	count="${#ary[@]}"
+	for i in "${ary[@]}"; do
+		pos=$(( pos + 1 ))
+		i=$(echo "$i" | cut -d $'\n' -f 1)
+		class=$(echo "$i" | cut -d ',' -f 1)
+		url=$(echo "$i" | cut -d ',' -f 2)
+		echo "			\"class\": \"$class\"," >> temp
+		echo "			\"image\": \"$url\""
+		if [ "$pos" -lt "$count" ]; then
+			echo "		}," >> temp
+		else
+			echo "		}" >> temp
+		fi
+	done
+	echo "	]" >> temp
+	echo "}" >> temp
+	http POST http://$host:$port/api/train < temp
+	rm temp
+}
+nv_retrain() {
+	http GET http://$host:$port/api/retrain
+}
+nv_classifyImg() {
+	http GET "http://$host:$port/api/classify?image=$imgurl"
+}

@@ -1,0 +1,86 @@
+#!/bin/bash
+
+usage() {
+	echo "mkVirtualDomain <domain name> <port> <alias1,alias2,alias3...>"
+	echo "Example: mkVirtualDomain simiantech.biz 80 mail,support,www"
+}
+if [ -n "$1" ]; then
+	if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+		usage;
+		exit 0
+	else
+		domain="$1"
+	fi
+else
+	read -p "Enter the domain name you wish to set up: " domain
+fi
+if [ -n "$2" ]; then
+	port="$2"
+else
+	read -p "Enter the port the service should listen on: " port
+fi
+if [ -n "$3" ]; then
+	string="$3"
+	IFS=',' subdomains=($string)
+	echo "I will create ${#subdomains[@]} sub domains for $domain."
+else
+	echo "Enter any sub domains you wish to create, comma separated. Example: 'mail,www,support' will create mail.$domain, www.$domain, and support.$domain."
+	read -p "Leave blank for none: " subdomains
+fi
+if [ ! -d "/var/www/$domain/public_html" ]; then
+	echo "Creating root directory for '$domain' in '/var/www'..."
+	sudo mkdir -p "/var/www/$domain/public_html"
+	echo "Changing ownership to '$USER:$USER'..."
+	sudo chown -R $USER:$USER "/var/www/$domain/public_html"
+else
+	echo "Looks like this domian already exists! This may have already been done, continuing tentatively."
+fi
+echo "Securing main web folder..."
+sudo chmod -R 755 /var/www
+if [ ! "/var/www/$domain/public_html/index.html" ]; then
+	echo "Creating default index.html..."
+	echo "<html>" > index.html
+	echo "  <head>" >> index.html
+	echo "    <title>Welcome to $domain!</title>" >> index.html
+	echo "  </head>" >> index.html
+	echo "  <body>" >> index.html
+	echo "    <h1>Success!  Apache is working! Replace this file with your own index.html to get started!</h1>" >> index.html
+	echo "  </body>" >> index.html
+	echo "</html>" >> index.html
+	sudo mv index.html "/var/www/$domain/public_html/index.html"
+else
+	echo "index.html already exists! No need to execute, exiting..."
+	exit 1
+fi
+echo "Cloning default.conf into $domain.conf..."
+sudo cp /etc/apache2/sites-available/000-default.conf "/etc/apache2/sites-available/$domain.conf"
+echo "<VirtualHost *:$port>" > "$domain.conf"
+echo "        ServerAdmin $USER@$domain" >> "$domain.conf"
+echo "	ServerName $domain" >> "$domain.conf"
+for alias in ${subdomains[@]}; do
+	echo "Creating alist '$alias' for domain '$domain'..."
+	echo "	ServerAlias $alias.$domain" >> "$domain.conf"
+	echo "Done."
+done
+echo "Setting document root..."
+echo "	DocumentRoot /var/www/$domain/public_html" >> "$domain.conf"
+echo "	ErrorLog ${APACHE_LOG_DIR}/error.log" >> "$domain.conf"
+echo "	CustomLog ${APACHE_LOG_DIR}/access.log combined" >> "$domain.conf"
+echo "</VirtualHost>" >> "$domain.conf"
+sudo mv "$domain.conf" "/etc/apache2/sites-available/$domain.conf"
+sudo a2ensite "$domain.conf"
+read -p "Recommended: Disable the default '000-default.conf' site for security reasons: (y/n): " yesno
+if [ "$yesno" = "y" ] || [ "$yesno" = "yes" ]; then
+	echo "Disabling default..."
+	sudo a2dissite 000-default.conf
+	echo "Done."
+else
+	echo "Skipping..."
+fi
+echo "Restarting apache..."
+sudo systemctl restart apache2
+echo "Reloading service..."
+sudo service apache2 reload
+echo "All done!"
+echo "Note: You'll need to register the domains with a registrar, run your own DNS server, or edit your /etc/hosts file with the above domain name and it's IP/port number to access them."
+exit 1

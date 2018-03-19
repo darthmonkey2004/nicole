@@ -1,0 +1,77 @@
+#!/bin/bash
+
+if [ -n "$1" ]; then
+	tid="$1"
+else
+	echo "No torrent id supplied! Exiting..."
+	exit 1
+fi
+if [ -n "$2" ]; then
+	mediatype="$2"
+else
+	echo "No media type supplied! Please set to one of the following: 'music', 'movie', 'series', or 'software'. Exiting..."
+	exit 1
+fi
+cd ~/
+echo "tid='$tid', mediatype='$mediatype'"
+exists=$(sqlite3 media.db ".tables" | grep "pbdl")
+if [ -z "$exists" ]; then
+	echo "Table not found. Creating..."
+	sqlite3 media.db "CREATE TABLE pbdl (tid INTEGER NOT NULL, status TEXT NOT NULL, mediatype TEXT NOT NULL, name TEXT NOT NULL, files TEXT NOT NULL, path TEXT NOT NULL, PRIMARY KEY (tid));"
+	echo "Created!"
+fi
+data=$(transmission-remote -t$tid -l)
+isdone=$(echo "$data" | grep "Finished")
+isidle=$(echo "$data" | grep "IDle")
+inprogress=$(echo "$data" | grep "Up & Down")
+if [ -n "$isdone" ]; then
+	status="Finished"
+elif [ -n "$isidle" ]; then
+	status="Idle"
+elif [ -n "$inprogress" ]; then
+	status="Downloading"
+else
+	status="Unknown"
+fi
+data=$(transmission-remote -t$tid -l)
+readarray ary <<< "$data"
+data="${ary[1]}"
+data=$(echo ${data//  /|})
+IFS='|' ary=($data)
+count="${#ary[@]}"
+count=$(( count - 1))
+name=${ary[$count]}
+name="${name:1}"
+path="/var/lib/transmission-daemon/downloads/$name"
+data=$(transmission-remote -t$tid -f)
+IFS=$'\n' ary=($data)
+pos=0
+rm temp
+for i in "${ary[@]}"; do
+	pos=$(( pos + 1 ))
+	if [ "$pos" -gt "2" ]; then
+		echo "$i" >> temp
+	fi
+done
+readarray ary < temp
+rm files.txt
+for i in "${ary[@]}"; do
+	i=$(echo "$i" | cut -d $'\n' -f 1)
+	string=$(echo "${i//  /|}"); IFS='|' tempary=($string)
+	count="${#tempary[@]}"
+	count=$(( count - 1 ))
+	file="${tempary[$count]}"
+	echo "$file" >> files.txt
+done
+files=$(cat files.txt)
+query="INSERT INTO pbdl VALUES($tid,'$status','$mediatype','$name','$files','$path');"
+if [ -z "$status" ] || [ -z "$name" ] || [ -z "$files" ] || [ -z "$path" ]; then
+	echo "Uh oh! Something failed to set! Data: status='$status', name='$name', files='$files', path='$path'"
+	echo "Exiting..."
+	exit 1
+fi
+echo "$query" > "$HOME/pbdl.temp"
+echo "Adding to media.db..."
+cd ~/
+sqlite3 media.db ".read pbdl.temp"
+echo "Done!"

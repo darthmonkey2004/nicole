@@ -1,0 +1,102 @@
+#!/usr/bin/env python
+
+import aiml
+import marshal
+import os
+import sys
+import subprocess
+import re
+BRAINFILE="nicole.brn"
+BOOTSTRAPFILE = "std-startup.xml"
+USERDIR = "userdata/"
+if sys.argv[1]:
+	USER = sys.argv[1]
+
+n = aiml.Kernel()
+
+if os.path.isfile(BRAINFILE):
+	n.bootstrap(brainFile = BRAINFILE)
+else:
+	n.bootstrap(learnFiles = BOOTSTRAPFILE, commands = "load aiml b")
+	n.saveBrain(brainfile)
+
+
+if os.path.isfile(USERDIR + USER + ".ses"):
+	sessionFile = file(USERDIR + USER + ".ses", "rb")
+	sessionData = marshal.load(sessionFile)
+	sessionData = n.getSessionData(USER)
+	sessionFile.close()
+
+	if sessionData:
+		try:
+			for pred, value in marshal.load(sessionFile).items():
+				n.setPredicate(pred, value, USER)
+			sessionData = n.getSessionData(USER)
+			sessionFile = file(USERDIR + USER + ".ses", "wb")
+			marshal.dump(sessionData, sessionFile)
+			sessionFile.close()
+		except:
+			n.setPredicate(name, USER, USER)
+			sessionData = n.getSessionData(USER)
+			sessionFile = file(USERDIR + USER + ".ses", "wb")
+			marshal.dump(sessionData, sessionFile)
+			sessionFile.close()
+
+data = raw_input()
+userin = data.split('\n')
+userin = userin[0]
+string = str(userin)
+results = (re.search('=', string))
+results = str(results)
+if (results == "None"):
+	if string == "quit":
+		exit()
+	elif string == "save":
+		n.saveBrain(brainfile)
+	elif string == "reloadBrain":
+		n.bootstrap(brainFile = BRAINFILE)
+	elif string == "reloadAIML":
+		n.bootstrap(brainFile = BOOTSTRAPFILE)
+		n.bootstrap(learnFiles = "BOOTSTRAPFILE", commands = "load aiml b")
+		n.saveBrain(brainfile)
+	else:
+		sessionData = n.getSessionData(USER)
+		response = n.respond(userin, USER)
+		sessionFile = file(USERDIR + USER + ".ses", "wb")
+		marshal.dump(sessionData, sessionFile)
+		sessionFile.close()
+		print ("<< " + response)
+elif (results != "None"):
+	ary = string.split(',')
+	pos = -1
+	for i in ary:
+		pos = (pos + 1)
+		string = ary[pos]
+		pieces = string.split()
+		method = pieces[0]
+		if (method == "set"):
+			args = pieces[1]
+			command = args.split('=')
+			var = command[0]
+			val = command[1]
+			n.setPredicate(var, val, USER)
+			print ("I set " + var + " to " + val + ".")
+
+		elif (method == "com"):
+			com = pieces[1]
+			path = ("scripts/" + com)
+			if os.path.isfile(path):
+				response = ("Running" + args)
+				print response
+				subprocess.call(com)
+				response = (com + "Executed.")
+				print response
+		elif (method == "get"):
+			var = pieces[1]
+			print var
+			val = n.getPredicate(var, USER)
+			response = (var + " is " + val)
+			print response
+		else:
+			print "Sorry, I was unable to locate that command. Please ensure the script file is in my 'scripts' directory in my home folder."
+			print ("Command was " + method)

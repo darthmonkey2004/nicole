@@ -1,0 +1,74 @@
+#!/bin/bash
+
+
+if [ -n "$2" ]; then
+	title="$1"
+else
+	echo "No title provided! Exiting..."
+	echo "Usage: tmdb.query.movie 'Title of Movie' '/path/to/file.extension'"
+	exit 1
+fi
+if [ -n "$2" ]; then
+	file="$2"
+else
+	echo "No filepath provided! Exiting..."
+	echo "Usage: tmdb.query.movie 'Title of Movie' '/path/to/file.extension'"
+	exit 1
+fi
+if [ -n "$3" ]; then
+	sql=0
+else
+	sql=1
+fi
+api_key="ac1bdc4046a5e71ef8aa0d0bd93f8e9b"
+if [ "$file" = "$HOME/media.db" ]; then
+	hash=$(md5sum "$file" | cut -d ' ' -f 1)
+	duration="0.00"
+else
+	fp=$(fpcalc "$file")
+	duration=$(echo "$fp" | cut -d '=' -f 2 | cut -d $'\n' -f 1)
+	hash=$(echo "$fp" | md5sum | cut -d ' ' -f 1)
+fi
+query=$(bash "$HOME/Nicole/platforms/Ubuntu/url_encode_decode.nic" -e "$title")
+data=$(curl -s "https://api.themoviedb.org/3/search/movie?api_key=$api_key&language=en-US&query=$query")
+echo "$data" | jq '.' > ~/out.txt
+release_date=$(echo "$data" | jq '.results[0] .release_date' | cut -d '"' -f 2)
+year=$(echo "$data" | jq '.results[0] .year')
+if [ "$year" = "null" ]; then
+	year=$(echo "$release_date" | cut -d '-' -f 1)
+fi
+description=$(echo "$data" | jq '.results[0] .overview')
+description=$(echo "$description" | sed 's/\"//g')
+description=$(echo "$description" | sed 's/\\//g')
+hasquote=$(echo "$description" | grep "'")
+if [ -n "$hasquote" ]; then
+	IFS="'" description=($description)
+	for i in "${description[@]}"; do
+		i=$(echo "$i" | cut -d $'\n' -f 1)
+		if [ -z "$string" ]; then
+			string="$i"
+		elif [ -n "$string" ]; then
+			string="$string$i"
+		fi
+	done
+	description="$string"
+	string=''
+	hasquote=''
+fi
+poster=$(echo "$data" | jq '.results[0] .poster_path' | cut -d '"' -f 2)
+poster="https://image.tmdb.org/t/p/w500$poster"
+if [ -z "$year" ]; then
+	year=$(echo "$data" | jq '.results[0] .year' | cut -d '"' -f 2)
+fi
+cd ~/
+if [ "$sql" = "1" ]; then
+	videos_query="INSERT INTO videos(isactive, hash, title, year, description, poster, ismovie, isseries, filepath) VALUES('1', '$hash', '$title', '$year', '$description', '$poster', '1', '0', '$file');"
+	echo "$videos_query" > "$HOME/videos.temp"
+	movies_query="INSERT INTO movies(isactive, hash, title, year, release_date, duration, description, poster, filepath) VALUES('1', '$hash', '$title', '$year', '$release_date', '$duration', '$description', '$poster', '$file');"
+	echo "$movies_query" > "$HOME/movies.temp"
+elif [ "$sql" = "0" ]; then
+	videos_query="INSERT INTO videos(isactive&&&hash&&&title&&&year&&&description&&&poster&&&ismovie&&&isseries&&&filepath) VALUES('1'&&&'$hash'&&&'$title'&&&'$year'&&&'$description'&&&'$poster'&&&'1'&&&'0'&&&'$file');"
+	echo "$videos_query" > "$HOME/videos.temp"
+	movies_query="INSERT INTO movies(isactive&&&hash&&&title&&&year&&&release_date&&&duration&&&description&&&poster&&&filepath) VALUES('1'&&&'$hash'&&&'$title'&&&'$year'&&&'$release_date'&&&'$duration'&&&'$description'&&&'$poster'&&&'$file');"
+	echo "$movies_query" > "$HOME/movies.temp"
+fi

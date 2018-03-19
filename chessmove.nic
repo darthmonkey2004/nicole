@@ -1,0 +1,93 @@
+#!/bin/bash
+
+newGame() {
+	if [ -f savegame.nic ]; then
+		rm savegame.nic
+	fi
+	if [ -f chesslog ]; then
+		rm chesslog
+	fi
+	if [ -f log ]; then
+		rm log
+	fi
+	if [ -f adapter.log ]; then
+		rm adapter.log
+	fi
+	echo "Saved game deleted!"
+	echo "new" > com
+	echo "exit" >> com
+	data=$(gnuchess -m -e < com)
+	echo "Started new game!"
+	if [ -f com ]; then
+		rm com
+	fi
+}
+setWait() {
+	read -p "Enter wait time (in seconds):" waittime
+	echo "Wait time set : $waittime seconds"
+}
+killchess() {
+	killchess
+}
+if [ "$1" = "new" ]; then
+	newGame;
+elif [ "$1" = "killchess" ]; then
+	killchess;
+else
+	rm com
+	moves=$(cat chesslog)
+	if [ -n "$moves" ]; then
+		ary=($moves)
+		for i in "${ary[@]}"; do
+			if [ "$i" = "*(*)" ]; then
+				n=$(echo "$i" | cut -d '(' -f 1)
+				echo "$n" >> com
+				echo "$n"
+			else
+				echo "$i" >> com
+				echo "$i"
+			fi
+		done
+		echo "$1" >> com
+		echo "$1" >> chesslog
+		echo "go" >> com
+		echo "save savegame.nic" >> com
+		#gnome-terminal -x sh -c 'sleep 12 ; kill $(pgrep gnuchess) ; exit ; exec bash'
+		gnuchess --easy -m < com > data&disown
+		sleep 20
+		kill $(pgrep gnuchess)
+		data=$(cat data)
+		echo "$data"
+		echo "$data" > log
+		readarray ary < adapter.log
+		count="${#ary[@]}"
+		newcount=$(( count - 3 ))
+		polycount=$(( count - 2 ))
+		aimove=$(echo "${ary[$newcount]}" | cut -d ' ' -f 4)
+		polyglot=$(echo "${ary[$polycount]}" | cut -d ' ' -f 3)
+		echo "$aimove" >> chesslog
+		echo "$polyglot" > movetype
+		echo "$aimove"
+	else
+		echo "$1" > com
+		echo "$1" >> chesslog
+		echo "go" >> com
+		echo "save savegame.nic" >> com
+		#gnome-terminal -x sh -c 'sleep 12 ; kill $(pgrep gnuchess) ; exit ; exec bash'
+		gnuchess --easy -m < com > data&disown
+		sleep 20
+		kill $(pgrep gnuchess)
+		data=$(cat data)
+		echo "$data"
+		echo "$data" > log
+		readarray ary < adapter.log
+		count="${#ary[@]}"
+		newcount=$(( count - 3 ))
+		polycount=$(( count - 2 ))
+		aimove=$(echo "${ary[$newcount]}" | cut -d ' ' -f 4)
+		polyglot=$(echo "${ary[$polycount]}" | cut -d ' ' -f 3)
+		echo "$aimove" >> chesslog
+		echo "$polyglot" > movetype
+		echo "$aimove"
+	fi
+fi

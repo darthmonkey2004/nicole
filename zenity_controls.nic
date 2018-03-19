@@ -1,0 +1,122 @@
+#Dialogs
+#--calendar
+#--entry
+#--error
+#--file-selection
+#--notification
+#--progress
+#--question
+#--text-info
+#--warning
+#--scale
+#--color-selection
+#--password
+#--forms
+
+#General Options:
+#--title=TITLE
+#--window-icon=ICONPATH
+#--width=WIDTH
+#--height=HEIGHT
+#--timeout=TIMEOUT
+
+#Calendar options
+#--text=%text
+#--day=%day
+#--month=%month
+#--year=%year
+#--date-format=<%d/%m/%y>
+
+#Text Entry Options
+#--text=STRING
+#--entry-text=STRING
+#--hide-text
+
+#Error options
+#--text=STRING
+#--no-wrap
+#--no-markup
+
+#File selection options
+
+#--filename=FILENAME
+#--multiple
+#--directory
+#--save Activate save mode
+#--separator=SEPARATOR
+#--confirm-overwrite
+#--file-filter=NAME | PATTERN1 PATTERN2
+
+#Info options
+#--text=STRING
+#--no-wrap
+#--no-markup
+
+#List options
+#--text=STRING
+#--column=STRING
+#--checklist
+#--radiolist
+#--separator=STRING
+#--multiple
+#--editable
+#--print-column=NUMBER or ALL
+#--hide-column=NUMBER
+#--hide-header
+
+#Notification options
+#--text=STRING
+#--listen(stdin:'message','tooltip','icon','visible'
+
+#Progress options
+#--text=STRING
+#--percentage=INT
+#--auto-close
+#--auto-kill
+#--pulsate
+#--no-cancel
+
+#Question options
+#--text=STRING
+#--no-wrap
+#--no-markup
+#--ok-label
+#--cancel-label
+
+#Text options
+#--filename=FILENAME
+#--editable
+#--checkbox=%text
+#--ok-%btn_ok_label
+#--cancel-%btn_cancel_label
+
+#Warning options
+#--text=STRING
+#--no-wrap
+#--no-markup
+
+#Scale options
+#--text=STRING
+#--value=VALUE
+#--min-value=VALUE
+#--max-value=VALUE
+#--step=VALUE
+#--print-partial
+#--hide-value
+
+#Color selection options
+#--color=VALUE
+#--show-palette
+
+#Password dialog options
+#--username
+
+#Forms dialog options
+#--add-entry=FIELDNAME
+#--add-password=FIELDNAME
+#--add-calendar=FIELDNAME
+#--text=%text
+#--separator=%separator
+#--forms-date-format=<%m-%d-%y>
+
+#Examples

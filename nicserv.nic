@@ -1,0 +1,67 @@
+#!/bin/bash	
+
+
+getLocalIp() {
+	ifconfig | grep "inet" > netdevs.temp
+	readarray ary < netdevs.temp
+	rm netdevs.temp
+	string="${ary[0]}"
+	string=$(echo "$string" | cut -d $'\n' -f 1)
+	localip=$(echo "$string" | cut -d ' ' -f 10)
+}
+
+listener() {
+	ls *.nic > files
+	files=$(cat files)
+	if [ -z "$localip" ]; then
+		getLocalIp;
+	fi
+	echo "Listener running for client download requests..."
+	data=$(nc -l -p $port)
+	readarray ary <<< "$data"
+	data="${ary[0]}"
+	data=$(echo "$data" | cut -d $'\n' -f 1)
+	data=$(echo "$data" | cut -d '?' -f 2 | cut -d ' ' -f 1)
+	echo "Data received: '$data'"
+	hascom=$(echo "$data" | grep "com=")
+	echo "hascom='$hascom'"
+	haskey=$(echo "$data" | grep "key=")
+	echo "haskey='$haskey'"
+	if [ -n "$hascom" ] && [ -n "$haskey" ]; then
+		method=$(echo "$data" | cut -d '&' -f 1 | cut -d '=' -f 2)
+		key=$(echo "$data" | cut -d '&' -f 2 | cut -d '=' -f 2)
+		echo "command received: '$method'"
+		echo "key received: '$key'"
+	fi
+	exists=$(echo "$files" | grep "$method")
+	if [ -n "$exists" ]; then
+		echo "Executing '$method'..."
+		gnome-terminal --geometry
+		listener;
+	else
+		echo "No method found for $method"
+		listener;
+	fi
+}
+initServ() {
+	if [ -z "$localip" ]; then
+		getLocalIp;
+	fi
+	if [ -f /etc/NicServ/NicServ.conf ]; then
+		. /etc/NicServ/NicServ.conf
+	else
+		mkconf;
+		. /etc/NicServ/NicServ.conf
+	fi
+	if [ -z "$port" ]; then
+		port=1234
+	fi
+	echo "Initialization complete!"
+}
+homedir="$HOME/Nicole/platforms/Ubuntu"
+cd "$homedir"
+initServ;
+#processid=$(python -m SimpleHTTPServer 8888) > out.txt&disown
+#echo "$processid" > nicserv.pid
+listener;
+

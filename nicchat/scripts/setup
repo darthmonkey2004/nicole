@@ -1,0 +1,111 @@
+#!/bin/bash
+
+mkStartupXml() {
+	if [ -z "$path" ]; then
+		files=$(ls "$path" | grep "*.aiml")
+	else
+		files=$(ls "$path")
+	echo "$files" > temp
+	readarray ary < temp
+	rm temp
+	echo '<aiml version="1.0.1" encoding="UTF-8">' > std-startup.xml
+	echo '    <category>' >> std-startup.xml
+	echo '        <pattern>LOAD AIML B</pattern>' >> std-startup.xml
+	echo '        <template>' >> std-startup.xml
+	for i in "${ary[@]}"; do
+		file=$(echo "$i" | cut -d $'\n' -f 1)
+		tab="            "
+		line="$tab<learn>$file</learn>"
+		echo "$line" >> std-startup.xml
+	done
+	echo '        </template>' >> std-startup.xml
+	echo '    </category>' >> std-startup.xml
+	echo '    <category>' >> std-startup.xml
+	echo '        <pattern>CALL ME *</pattern>' >> std-startup.xml
+	echo '        <template>' >> std-startup.xml
+	echo '            I will call you <set name="name"><star/></set> from now on.' >> std-startup.xml
+	echo '        </template>' >> std-startup.xml
+	echo '    </category>' >> std-startup.xml
+	echo '    <category>' >> std-startup.xml
+	echo '        <pattern>MY NAME IS *</pattern>' >> std-startup.xml
+	echo '        <template>' >> std-startup.xml
+	echo '            Hi there, <set name="name"><star/></set>. Nice to meet you.' >> std-startup.xml
+	echo '        </template>' >> std-startup.xml
+	echo '    </category>' >> std-startup.xml
+	echo '    <category>' >> std-startup.xml
+	echo '        <pattern>WHAT IS MY NAME</pattern>' >> std-startup.xml
+	echo '        <template>' >> std-startup.xml
+	echo '            Your name is <get name="name"/>.' >> std-startup.xml
+	echo '        </template>' >> std-startup.xml
+	echo '    </category>' >> std-startup.xml
+	echo '    <category>' >> std-startup.xml
+	echo '        <pattern>YOUR NAME IS *</pattern>' >> std-startup.xml
+	echo '        <template>' >> std-startup.xml
+	echo '            Ok <get name="name"/>, I will answer to <set name="botname"><star/></set> from now on.' >> std-startup.xml
+	echo '        </template>' >> std-startup.xml
+	echo '    </category>' >> std-startup.xml
+	echo '    <category>' >> std-startup.xml
+	echo '        <pattern>WHAT IS YOUR NAME</pattern>' >> std-startup.xml
+	echo '        <template>' >> std-startup.xml
+	echo '            My name is <get name="botname"/>.' >> std-startup.xml
+	echo '        </template>' >> std-startup.xml
+	echo '    </category>' >> std-startup.xml
+	echo '</aiml>' >> std-startup.xml
+	echo "std-startup.xml created!"
+}
+mkChatPy() {
+	cd "$HOME/nicole/nicchat"
+	line1='#!/usr/bin/env python'
+	line2='# -*- coding: utf-8 -*-'
+	line3=''
+	line4='import aiml'
+	line5='import os'
+	line6='import sys'
+	line7='kernel = aiml.Kernel()'
+	line8='if os.path.isfile("nicole.brn"):'
+	line9="	kernel.bootstrap(brainFile = '$HOME/nicole/nicchat/nicole.brn')"
+	line10='else:'
+	line11='	kernel.bootstrap(learnFiles = "std-startup.xml", commands = "load aiml b")'
+	line12='	kernel.saveBrain("nicole.brn")'
+	line13='string = str(sys.argv)'
+	line14="sessionid = '$sessionid'"
+	line15='sessionData = kernel.getSessionData(sessionid)'
+	line16='response = kernel.respond(raw_input(string), sessionid)'
+	line17='sys.stdout.write(response)'
+	echo "$line1" > chat
+	echo "$line2" >> chat
+	echo "$line3" >> chat
+	echo "$line4" >> chat
+	echo "$line5" >> chat
+	echo "$line6" >> chat
+	echo "$line7" >> chat
+	echo "$line8" >> chat
+	echo "$line9" >> chat
+	echo "$line10" >> chat
+	echo "$line11" >> chat
+	echo "$line12" >> chat
+	echo "$line13" >> chat
+	echo "$line14" >> chat
+	echo "$line15" >> chat
+	echo "$line16" >> chat
+	sudo chmod a+x chat
+}
+if [ -f std-startup.xml ]; then
+	mv std-startup.xml std-startup.xml.old
+fi
+
+if [ -z "$1" ]; then
+	echo "XML file path not provieded! Using 'nicchat' directory."
+else
+	path="$1"
+fi
+if [ -z "$2" ]; then
+	echo "Session ID number not provided!"
+	exit 1
+else
+	sessionid="$2"
+fi
+mkStartupXml;
+mkChatPy;
+echo "Setup complete, chat is ready!"
+exit 0

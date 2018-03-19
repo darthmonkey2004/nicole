@@ -1,0 +1,41 @@
+#!/bin/bash
+
+cd "$HOME/Nicole/platforms/Ubuntu"
+if [ ! -f nplayer.conf ]; then
+	echo "No configuration file found! Using default values..."
+else
+	. nplayer.conf
+fi
+cd ~/
+echo "Geometry: $NPLAYER_GEOMETRY"
+file=$(cat playNext)
+if [ -z "$NPLAYER_VOLNORM" ]; then
+	export NPLAYER_VOLNORM="1.0"
+fi
+norm="$NPLAYER_VOLNORM"
+if [ -z "$NPLAYER_GEOMETRY" ]; then
+	. "$HOME/Nicole/platforms/Ubuntu/getLocalDisplays.nic" > temp
+	readarray ary < temp
+	rm temp
+	geometry="${ary[0]}"
+	geometry=$(echo "$geometry" | cut -d $'\n' -f 1)
+	export NPLAYER_GEOMETRY="$geometry"
+fi
+com="mplayer -af volnorm=2:$norm -geometry $NPLAYER_GEOMETRY"
+
+if [ "$NPLAYER_FULLSCREEN" = "on" ]; then
+	com="$com -fs"
+fi
+if [ "$NPLAYER_SHUFFLE" = "on" ]; then
+	com="$com -shuffle"
+fi
+if [ "$file" = "customplaylist.txt" ]; then
+	$com -playlist "$HOME/$file"
+else
+	$com "$file"
+fi
+
+for i in $(pgrep mplayer); do
+	kill "$i"
+done
+exit 0

@@ -1,0 +1,14 @@
+#!/bin/bash
+
+cd "$HOME/Nicole/platforms/Ubuntu"
+if [ ! -f nplayer.conf ]; then
+	echo "No configuration file found! Using default values..."
+else
+	. nplayer.conf
+fi
+if [ -z "$NPLAYER_AROWNKEY" ]; then
+	echo "Error: Auto Remote key not provided. I will not be able to notify this device when playback is finished."
+fi
+./nplayer.run
+curl "https://autoremotejoaomgcd.appspot.com/sendmessage?key=$NPLAYER_AROWNKEY&message=nplayer.playbackEnded"
+exit 0

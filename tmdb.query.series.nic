@@ -1,0 +1,145 @@
+#!/bin/bash
+
+
+if [ -n "$1" ]; then
+	series="$1"
+else
+	echo "No file path given! Exiting..."
+	echo "Usage: tmdb.query.season 'Title of Movie' 'season' 'episode_number' '/path/to/file.extension'"
+	exit 1
+fi
+if [ -n "$2" ]; then
+	season="$2"
+else
+	echo "Season not provided. Exiting..."
+	echo "Usage: tmdb.query.season 'Title of Movie' 'season' 'episode_number' '/path/to/file.extension'"
+	exit 1
+fi
+if [ -n "$3" ]; then
+	episode_number="$3"
+else
+	echo "Episode not provided. Exiting..."
+	echo "Usage: tmdb.query.season 'Title of Movie' 'season' 'episode_number' '/path/to/file.extension'"
+	exit 1
+fi
+if [ -n "$4" ]; then
+	file="$4"
+else
+	echo "Filepath not provided. Exiting..."
+	echo "Usage: tmdb.query.season 'Title of Movie' 'season' 'episode_number' '/path/to/file.extension'"
+	exit 1
+fi
+if [ -n "$5" ]; then
+	sql=0
+else
+	sql=1
+fi
+
+api_key="ac1bdc4046a5e71ef8aa0d0bd93f8e9b"
+fp=$(fpcalc "$file")
+duration=$(echo "$fp" | cut -d '=' -f 2 | cut -d $'\n' -f 1)
+hash=$(echo "$fp" | md5sum | cut -d ' ' -f 1)
+query=$(bash "$HOME/Nicole/platforms/Ubuntu/url_encode_decode.nic" -e "$series")
+data=$(curl -s "https://api.themoviedb.org/3/search/tv?api_key=$api_key&language=en-US&query=$query")
+echo "$data" | jq '.' > ~/out.txt
+series_name=$(echo "$data" | jq '.results[0] .name' | cut -d '"' -f 2)
+description=$(echo "$data" | jq '.results[0] .overview' | cut -d '"' -f 2)
+hasquote=$(echo "$description" | grep "'")
+if [ -n "$hasquote" ]; then
+	IFS="'" array=($description)
+	for i in "${array[@]}"; do
+		i=$(echo "$i" | cut -d $'\n' -f 1)
+		if [ -z "$string" ]; then
+			string="$i"
+		else
+			string="$string$i"
+		fi
+	done
+	description="$string"
+	string=''
+fi
+year=$(echo "$data" | jq '.results[0] .first_air_date' | cut -d '"' -f 2 | cut -d '-' -f 1)
+poster=$(echo "$data" | jq '.results[0] .poster_path' | cut -d '"' -f 2)
+poster="https://image.tmdb.org/t/p/w500$poster"
+tmdbid=$(echo "$data" | jq '.results[0] .id')
+url="https://api.themoviedb.org/3/tv/$tmdbid?api_key=$api_key&language=en-US"
+data=$(curl -s "$url")
+echo "$data" | jq '.' > ~/out.txt
+episodes=$(echo "$data" | jq '.number_of_episodes')
+seasons=$(echo "$data" | jq '.number_of_seasons')
+first_air_date=$(echo "$data" | jq '.first_air_date')
+last_air_date=$(echo "$data" | jq '.last_air_date')
+created_by=$(echo "$data" | jq '.created_by')
+created_by=$(echo "$created_by" | grep "name" | cut -d '"' -f 4)
+newline=$(echo "$created_by" | grep $'\n')
+if [ -n "$newline" ]; then
+	IFS=$'\n' ary=($created_by)
+	for i in "${ary[@]}"; do
+		i=$(echo "$i" | cut -d $'\n' -f 1)
+		if [ -z "$string" ]; then
+			string="$i"
+		else
+			string="$string, $i"
+		fi
+	done
+	created_by="$string"
+	string=''
+fi
+query="$tmdbid/season/$season/episode/$episode_number"
+url="https://api.themoviedb.org/3/tv/$query?api_key=$api_key&language=en-US"
+data=$(curl -s "$url")
+echo "$data" | jq '.' > ~/out.txt
+episode_name=$(echo "$data" | jq '.name' | cut -d '"' -f 2)
+hasquote=$(echo "$episode_name" | grep "'")
+if [ -n "$hasquote" ]; then
+	IFS="'" array=($episode_name)
+	for i in "${array[@]}"; do
+		i=$(echo "$i" | cut -d $'\n' -f 1)
+		if [ -z "$string" ]; then
+			string="$i"
+		else
+			string="$string$i"
+		fi
+	done
+	episode_name="$string"
+	string=''
+fi
+overview=$(echo "$data" | jq '.overview' | cut -d '"' -f 2)
+if [ -z "$overview" ] || [ "$overview" = "null" ]; then
+	overview="$description"
+fi
+hasquote=$(echo "$overview" | grep "'")
+if [ -n "$hasquote" ]; then
+	IFS="'" array=($overview)
+	for i in "${array[@]}"; do
+		i=$(echo "$i" | cut -d $'\n' -f 1)
+		if [ -z "$string" ]; then
+			string="$i"
+		else
+			string="$string$i"
+		fi
+	done
+	overview="$string"
+	string=''
+fi
+still_path=$(echo "$data" | jq '.still_path' | cut -d '"' -f 2)
+if [ -z "$still_path" ] || [ "$sill_path" = "$null" ]; then
+	still_path="$poster"
+fi
+air_date=$(echo "$data" | jq '.air_date' | cut -d '"' -f 2)
+cd ~/
+if [ "$sql" = "1" ]; then
+	videos_query="INSERT INTO videos(isactive, hash, title, year, description, poster, ismovie, isseries, filepath) VALUES('1', '$hash', '$series_name', '$year', '$description', '$poster', '0', '1', '$file');"
+	echo "$videos_query" > "$HOME/videos.temp"
+	series_query="INSERT INTO series(hash, isactive, series_name, duration, seasons, episodes, first_air_date, last_air_date, poster, description, created_by, filepath) VALUES('$hash', '1', '$series_name', '$duration', '$seasons', '$episodes', '$first_air_date', '$last_air_date', '$still_path', '$overview', '$created_by', '$file');"
+	echo "$series_query" > "$HOME/series.temp"
+	episodes_query="INSERT INTO episodes(hash, isactive, series_name, season, episode_number, episode_name, description, episode_id, air_date, still_path, filepath) VALUES('$hash', '1', '$series_name', '$season', '$episode_number', '$episode_name', '$overview', '$tmdbid', '$air_date', '$still_path', '$file');"
+	echo "$episodes_query" > "$HOME/episodes.temp"
+elif [ "$sql" = "0" ]; then
+	videos_query="INSERT INTO videos(isactive&&&hash&&&title&&&year&&&description&&&poster&&&ismovie&&&isseries&&&filepath) VALUES('1'&&&'$hash'&&&'$series_name'&&&'$year'&&&'$description'&&&'$poster'&&&'0'&&&'1'&&&'$file');"
+	echo "$videos_query" > "$HOME/videos.temp"
+	series_query="INSERT INTO series(hash&&&isactive&&&series_name&&&duration&&&seasons&&&episodes&&&first_air_date&&&last_air_date&&&poster&&&description&&&created_by&&&filepath) VALUES('$hash'&&&'1'&&&'$series_name'&&&'$duration'&&&'$seasons'&&&'$episodes'&&&'$first_air_date'&&&'$last_air_date'&&&'$still_path'&&&'$overview'&&&'$created_by'&&&'$file');"
+	echo "$series_query" > "$HOME/series.temp"
+	episodes_query="INSERT INTO episodes(hash&&&isactive&&&series_name&&&season&&&episode_number&&&episode_name&&&description&&&episode_id&&&air_date&&&still_path&&&filepath) VALUES('$hash'&&&'1'&&&'$series_name'&&&'$season'&&&'$episode_number'&&&'$episode_name'&&&'$overview'&&&'$tmdbid'&&&'$air_date'&&&'$still_path'&&&'$file');"
+	echo "$episodes_query" > "$HOME/episodes.temp"
+fi
